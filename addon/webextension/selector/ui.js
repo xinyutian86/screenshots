@@ -95,16 +95,28 @@ this.ui = (function() { // eslint-disable-line no-unused-vars
     return window.downloadOnly;
   }
 
-  function renderDownloadNotice() {
-    let notice = makeEl("div", "download-only");
+  // the download notice is rendered in iframes that match the document height
+  // or the window height. If parent iframe matches widnow height, pass in true
+  function renderDownloadNotice(initAtBottom = false) {
+    let notice = makeEl("table", "download-only");
     notice.innerHTML = `
-      <span data-l10n-id="downloadOnlyNotice"></span><span class="circle">?</span>
       <div class="download-only-details">
-        <p data-l10n-id="downloadOnlyDetails">
-          <ul>
-            <li data-l10n-id="downloadOnlyDetailsPrivate"></li>
-            <li data-l10n-id="downloadOnlyDetailsNeverRemember"></li>`;
+        <p data-l10n-id="downloadOnlyDetails"></p>
+        <ul>
+          <li data-l10n-id="downloadOnlyDetailsPrivate"></li>
+          <li data-l10n-id="downloadOnlyDetailsNeverRemember"></li>
+        </ul>
+      </div>
+      <tbody>
+        <tr class="download-only-wrapper">
+          <td class="download-only-content" data-l10n-id="downloadOnlyNotice"></td>
+          <td class="download-only-help"></td>
+        </tr>
+      <tbody>`;
     localizeText(notice);
+    if (initAtBottom) {
+      notice.style.bottom = '10px';
+    }
     return notice;
   }
 
@@ -400,7 +412,7 @@ this.ui = (function() { // eslint-disable-line no-unused-vars
             localizeText(this.document);
             const overlay = this.document.querySelector(".preview-overlay");
             if (isDownloadOnly()) {
-              overlay.appendChild(renderDownloadNotice());
+              overlay.appendChild(renderDownloadNotice(true));
             } else {
               overlay.querySelector(".preview-button-save").addEventListener(
                 "click", watchFunction(assertIsTrusted(standardOverlayCallbacks.onSavePreview)));
@@ -582,7 +594,21 @@ this.ui = (function() { // eslint-disable-line no-unused-vars
       this.bgRight.style.width = "100%";
 
       if (this.downloadNotice) {
-        this.downloadNotice.style.bottom = (docHeight - pageYOffset - winBottom + 10) + "px";
+        this.downloadNotice.style.top = (pageYOffset + winBottom - 60) + "px";
+
+        // the download notice is injected into an iframe that matches the document size
+        // in order to reposition it on scroll we need to bind an updated positioning
+        // function to some window events.
+        const repositionDownloadNotice = () => {
+          const currentYOffset = window.pageYOffset;
+          const currentWinBottom = window.innerHeight;
+          this.downloadNotice.style.top = (currentYOffset + currentWinBottom - 60) + "px";
+        };
+
+        // event callbacks are delayed 100ms each to keep from overloading things
+        const windowChangeStop = this.delayExecution(100, repositionDownloadNotice);
+        window.addEventListener('scroll', windowChangeStop);
+        window.addEventListener('resize', windowChangeStop);
       }
 
       if (!(this.isElementInViewport(this.buttons))) {
@@ -604,6 +630,18 @@ this.ui = (function() { // eslint-disable-line no-unused-vars
           this.save.style.top = 0;
           this.save.style.left = 0;
         }
+      }
+    },
+
+    // used to eventually move the download-only warning
+    // when a user ends scrolling or ends resizing a window
+    delayExecution(delay, cb) {
+      let timer;
+      return function() {
+        if (typeof timer !== 'undefined') {
+          clearTimeout(timer);
+        }
+        timer = setTimeout(cb, delay);
       }
     },
 
